@@ -1,14 +1,14 @@
 --[[
-    Скрипт для Delta Executor на базе Rayfield UI (V8 Ultimate Pack)
+    Скрипт для Delta Executor на базе Rayfield UI (V9 Ultimate Throws)
     Специально для режима "Сбросить вещи и людей"
-    Новые функции: Auto-Throw (Супер-бросок), Infinite Jump (Бесконечный прыжок), Noclip.
+    Новое: Раздельные модули Auto Throw (Авто-захват) и Super Throw (Полет за карту).
 ]]
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "TWKS Multi-Hack V8 | Delta Ultimate",
-    LoadingTitle = "Сборка модулей TWKS...",
+    Name = "TWKS Multi-Hack V9 | Delta",
+    LoadingTitle = "Активация модулей броска...",
     LoadingSubtitle = "by TWKS",
     Theme = "DarkTheme"
 })
@@ -29,9 +29,12 @@ local isAimbotEnabled = false
 local isEspEnabled = false
 local isNoclipEnabled = false
 local isInfJumpEnabled = false
-local isAutoThrowEnabled = false -- Супер-бросок
-local espColor = Color3.fromRGB(255, 0, 0)
 
+local isSuperThrowEnabled = false
+local isAutoThrowEnabled = false
+local autoThrowTargets = {}
+
+local espColor = Color3.fromRGB(255, 0, 0)
 local selectedAimbotTargets = {} 
 local tpTargetName = "" 
 
@@ -81,11 +84,12 @@ local function getPlayerNames()
 end
 
 local TabCombat = Window:CreateTab("Бой", 4483362458)
+local TabThrow = Window:CreateTab("Броски", 4483362458)
 local TabVisuals = Window:CreateTab("Визуалы", 4483362458)
 local TabMovement = Window:CreateTab("Движение", 4483362458)
 local TabTeleport = Window:CreateTab("Телепорт", 4483362458)
 
--- ==================== COMBAT (AIMBOT & SUPER THROW) ====================
+-- ==================== COMBAT (AIMBOT) ====================
 
 local SelectedLabel = TabCombat:CreateLabel("Цели: Нет")
 
@@ -108,7 +112,7 @@ local TargetDropdown = TabCombat:CreateDropdown({
 })
 
 TabCombat:CreateSlider({
-    Name = "Плавность Аимбота (Smoothness)",
+    Name = "Плавность Аимбота",
     Range = {1, 15},
     Increment = 1,
     CurrentValue = 1,
@@ -125,15 +129,6 @@ TabCombat:CreateToggle({
     end,
 })
 
-TabCombat:CreateToggle({
-    Name = "Супер-сила броска (Auto-Throw)",
-    CurrentValue = false,
-    Callback = function(Value)
-        isAutoThrowEnabled = Value
-    end,
-})
-
--- Аимбот
 RunService.RenderStepped:Connect(function()
     if not isAimbotEnabled then return end
     local closestTarget = nil
@@ -163,21 +158,117 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Auto-Throw (Супер-сила броска при переносе вещей/игроков)
-RunService.Heartbeat:Connect(function()
-    if isAutoThrowEnabled and localCharacter then
-        for _, child in ipairs(localCharacter:GetChildren()) do
-            -- Если мы держим объект (Tool или чужую часть тела)
-            if child:IsA("Tool") or child.Name == "CarrierWeld" then
-                local rootPart = child:FindFirstChild("Handle") or child:FindFirstChildOfClass("BasePart")
-                if rootPart then
-                    -- Накладываем огромный вектор силы вперед при попытке выбросить
-                    rootPart.AssemblyLinearVelocity = Camera.CFrame.LookVector * 300
+-- ==================== THROWS (AUTO & SUPER) ====================
+
+local ThrowLabel = TabThrow:CreateLabel("Цели авто-захвата: Нет")
+
+local AutoThrowDropdown = TabThrow:CreateDropdown({
+    Name = "Выбрать цель (Auto Throw)",
+    Options = getPlayerNames(),
+    CurrentOption = {""},
+    MultipleOptions = true,
+    Callback = function(Options)
+        autoThrowTargets = {}
+        local targetsStr = ""
+        for _, name in pairs(type(Options) == "table" and Options or {Options}) do
+            if name ~= "" then
+                autoThrowTargets[name] = true
+                targetsStr = targetsStr .. name .. ", "
+            end
+        end
+        ThrowLabel:Set(targetsStr ~= "" and "Цели: " .. targetsStr:sub(1, -3) or "Цели: Нет")
+    end,
+})
+
+TabThrow:CreateToggle({
+    Name = "Включить Auto Throw (Авто-захват)",
+    CurrentValue = false,
+    Callback = function(Value)
+        isAutoThrowEnabled = Value
+    end,
+})
+
+TabThrow:CreateToggle({
+    Name = "Super Throw (Улет за карту при отпускании)",
+    CurrentValue = false,
+    Callback = function(Value)
+        isSuperThrowEnabled = Value
+    end,
+})
+
+-- Логика Auto Throw (Телепорт к цели из списка и спам захвата)
+task.spawn(function()
+    while task.wait(0.05) do
+        if isAutoThrowEnabled and localCharacter and localRoot then
+            for name, state in pairs(autoThrowTargets) do
+                if state then
+                    local targetPlayer = Players:FindFirstChild(name)
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local tRoot = targetPlayer.Character.HumanoidRootPart
+                        local tHum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+                        
+                        if tHum and tHum.Health > 0 then
+                            -- Телепортируемся прямо за спину жертвы
+                            localRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 2)
+                            
+                            -- Имитация активации ProximityPrompt (E) и кликов мыши
+                            if fireproximityprompt then
+                                for _, v in ipairs(targetPlayer.Character:GetDescendants()) do
+                                    if v:IsA("ProximityPrompt") then
+                                        fireproximityprompt(v, 1)
+                                        fireproximityprompt(v, 0)
+                                    end
+                                end
+                            end
+                            if mouse1click then mouse1click() end
+                        end
+                    end
                 end
             end
         end
     end
 end)
+
+-- Логика Super Throw (Отслеживание отпускания захвата)
+local lastHeldPart = nil
+
+RunService.Heartbeat:Connect(function()
+    if not localCharacter then return end
+    
+    if isSuperThrowEnabled then
+        local currentlyHolding = nil
+        
+        -- Ищем вельд (захват игрока или предмета)
+        for _, v in ipairs(localCharacter:GetDescendants()) do
+            if (v:IsA("Weld") or v:IsA("Motor6D") or v:IsA("WeldConstraint")) and v.Part1 and v.Part1.Parent ~= localCharacter then
+                local p = Players:GetPlayerFromCharacter(v.Part1.Parent)
+                if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    currentlyHolding = p.Character.HumanoidRootPart
+                elseif v.Part1.Name == "Handle" then
+                    currentlyHolding = v.Part1
+                end
+            end
+        end
+        
+        -- Проверка на классический Tool
+        local tool = localCharacter:FindFirstChildOfClass("Tool")
+        if tool and tool:FindFirstChild("Handle") then
+            currentlyHolding = tool.Handle
+        end
+        
+        -- Сохраняем то, что держим. Если отпустили - запускаем в космос.
+        if currentlyHolding then
+            lastHeldPart = currentlyHolding
+        elseif lastHeldPart and not currentlyHolding then
+            if lastHeldPart:IsDescendantOf(workspace) then
+                -- Огромная скорость вперед и вверх
+                lastHeldPart.AssemblyLinearVelocity = Camera.CFrame.LookVector * 20000 + Vector3.new(0, 8000, 0)
+            end
+            lastHeldPart = nil
+        end
+    end
+end)
+
 
 -- ==================== VISUALS (ESP) ====================
 
@@ -324,14 +415,12 @@ TabMovement:CreateToggle({
     end,
 })
 
--- Логика бесконечного прыжка
 UserInputService.JumpRequest:Connect(function()
     if isInfJumpEnabled and localHumanoid then
         localHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
 
--- Anti-Grab поток
 task.spawn(function()
     while true do
         task.wait(0.1)
@@ -350,7 +439,6 @@ task.spawn(function()
     end
 end)
 
--- Рендер-цикл движения (Speed, Fly, Noclip)
 RunService.Stepped:Connect(function()
     if isNoclipEnabled and localCharacter then
         for _, part in ipairs(localCharacter:GetDescendants()) do
@@ -359,7 +447,6 @@ RunService.Stepped:Connect(function()
             end
         end
     elseif isAntiGrabEnabled and localCharacter then
-        -- Мягкий Noclip только для предотвращения зацепов чужой коллизией
         for _, part in ipairs(localCharacter:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
@@ -422,7 +509,9 @@ task.spawn(function()
     while task.wait(5) do
         local updatedNames = getPlayerNames()
         TargetDropdown:Refresh(updatedNames, true)
+        AutoThrowDropdown:Refresh(updatedNames, true)
         TeleportDropdown:Refresh(updatedNames, true)
     end
 end)
+
 
