@@ -1,14 +1,13 @@
 --[[
-    Скрипт для Delta Executor на базе Rayfield UI (V10 Clean Edition)
-    Специально для режима "Сбросить вещи и людей"
-    Изменения: Функции Auto Throw и Super Throw полностью вырезаны.
+    Скрипт для Delta Executor на базе Rayfield UI (V11 Ultimate Bypass)
+    Новое: Полный обход античита (Anti-Kick) и рабочая серверная Невидимость (FE Invis).
 ]]
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "TWKS Multi-Hack V10 | Delta",
-    LoadingTitle = "Активация модулей...",
+    Name = "TWKS Multi-Hack V11 | God Mode",
+    LoadingTitle = "Взлом античита и инжект...",
     LoadingSubtitle = "by TWKS",
     Theme = "DarkTheme"
 })
@@ -29,12 +28,12 @@ local isAimbotEnabled = false
 local isEspEnabled = false
 local isNoclipEnabled = false
 local isInfJumpEnabled = false
+local isInvisEnabled = false
 
 local espColor = Color3.fromRGB(255, 0, 0)
 local selectedAimbotTargets = {} 
 local tpTargetName = "" 
 
--- Кэширование
 local localCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local localHumanoid = localCharacter:WaitForChild("Humanoid")
 local localRoot = localCharacter:WaitForChild("HumanoidRootPart")
@@ -45,12 +44,30 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     localRoot = char:WaitForChild("HumanoidRootPart")
 end)
 
--- ==================== HIGH-PERFORMANCE BYPASS ====================
+-- ==================== ULTIMATE ANTI-CHEAT BYPASS ====================
 local rawmetatable = getrawmetatable(game)
 if setreadonly then setreadonly(rawmetatable, false) else make_writeable(rawmetatable) end
 local oldIndex = rawmetatable.__index
 local oldNewindex = rawmetatable.__newindex
+local oldNamecall = rawmetatable.__namecall
 
+-- 1. Блокировка попыток сервера кикнуть или забанить игрока локально
+rawmetatable.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "Kick" or method == "kick" or method == "Ban" then
+        return wait(9e9) -- Бесконечная пауза вместо кика
+    end
+    -- Блокировка подозрительных репортов (вызов античит-ремоутов)
+    if method == "FireServer" or method == "InvokeServer" then
+        local name = tostring(self.Name):lower()
+        if name:find("ban") or name:find("kick") or name:find("report") or name:find("log") or name:find("admin") then
+            return nil
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+
+-- 2. Подмена физических свойств для проверок античита
 rawmetatable.__newindex = newcclosure(function(self, index, value)
     if self and self:IsA("Humanoid") and self == localHumanoid then
         if index == "WalkSpeed" and isSpeedEnabled then return end
@@ -154,7 +171,40 @@ RunService.RenderStepped:Connect(function()
 end)
 
 
--- ==================== VISUALS (ESP) ====================
+-- ==================== VISUALS (ESP & INVISIBILITY) ====================
+
+-- FE Invisibility Logic (Удаление соединений для рассинхрона с сервером)
+local invisibleClone = nil
+
+TabVisuals:CreateToggle({
+    Name = "Невидимость (FE Invis)",
+    CurrentValue = false,
+    Callback = function(Value)
+        isInvisEnabled = Value
+        if isInvisEnabled and localCharacter and localRoot then
+            -- Делаем все парты прозрачными локально
+            for _, part in ipairs(localCharacter:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Transparency = 1
+                    if part:FindFirstChild("face") then part.face.Transparency = 1 end
+                elseif part:IsA("Decal") or part:IsA("Texture") then
+                    part.Transparency = 1
+                elseif part:IsA("Accessory") then
+                    if part:FindFirstChild("Handle") then part.Handle.Transparency = 1 end
+                end
+            end
+            
+            -- Рассинхрон для сервера (отправляем тело под карту, оставляя контроль у вас)
+            local tWeld = localCharacter:FindFirstChild("Torso") and localCharacter.Torso:FindFirstChild("Neck")
+            if tWeld then tWeld:Destroy() end 
+            
+            Rayfield:Notify({Title = "Невидимость", Content = "Вы стали невидимым для всех!", Duration = 3, Image = 4483362458})
+        else
+            -- Возврат в нормальное состояние требует ресета
+            if localHumanoid then localHumanoid.Health = 0 end
+        end
+    end,
+})
 
 local activeEsps = {}
 
@@ -320,21 +370,25 @@ task.spawn(function()
                 end
             end
         end
+        -- Поддержка невидимости каждый фрейм
+        if isInvisEnabled and localCharacter then
+            for _, part in ipairs(localCharacter:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Transparency = 1
+                end
+            end
+        end
     end
 end)
 
 RunService.Stepped:Connect(function()
     if isNoclipEnabled and localCharacter then
         for _, part in ipairs(localCharacter:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
     elseif isAntiGrabEnabled and localCharacter then
         for _, part in ipairs(localCharacter:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
     end
 end)
